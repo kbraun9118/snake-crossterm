@@ -1,7 +1,8 @@
 use std::{
     io::{stdout, Write},
-    process,
-    time::Duration,
+    panic::catch_unwind,
+    process, thread,
+    time::{Duration, Instant},
 };
 
 use crossterm::{
@@ -14,7 +15,7 @@ use crossterm::{
 use snake::Snake;
 
 // const TICK_RATE: u64 = 1000 / 120;
-const TICK_RATE: u64 = 1000 / 4;
+const TICK_RATE: Duration = Duration::from_millis(1000);
 
 type Result<T> = std::result::Result<T, std::io::Error>;
 
@@ -24,6 +25,17 @@ enum Direction {
     Down,
     Left,
     Right,
+}
+
+impl Direction {
+    pub fn opposite(&self) -> Self {
+        match self {
+            Direction::Up => Direction::Down,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+        }
+    }
 }
 
 mod snake {
@@ -134,12 +146,14 @@ mod snake {
         }
 
         pub fn set_direction(&mut self, diretion: Direction) {
-            self.directon = diretion;
+            if self.directon.opposite() != diretion {
+                self.directon = diretion;
+            }
         }
     }
 }
 
-fn main() -> Result<()> {
+fn game() -> Result<()> {
     let (mut x, mut y) = size()?;
     let mut snake = Snake::new(x, y);
     let mut stdout = stdout();
@@ -148,7 +162,8 @@ fn main() -> Result<()> {
     stdout.execute(SetSize(x, y))?.execute(Hide)?.flush()?;
 
     loop {
-        if poll(Duration::from_millis(TICK_RATE))? {
+        let start = Instant::now();
+        if poll(TICK_RATE)? {
             match read()? {
                 Event::Key(event) => match event.code {
                     KeyCode::Char('c') => {
@@ -186,5 +201,16 @@ fn main() -> Result<()> {
         snake.write_and_move(&mut stdout)?;
 
         stdout.flush()?;
+        let tick_duration = Instant::now() - start;
+
+        println!("{tick_duration:?}");
+        thread::sleep(TICK_RATE - tick_duration.min(TICK_RATE));
     }
+}
+
+fn main() {
+    let _ = catch_unwind(|| game());
+
+    let _ = disable_raw_mode().expect("Failed to disable raw mode");
+    process::exit(1)
 }
